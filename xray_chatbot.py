@@ -1,8 +1,44 @@
 import streamlit as st
 from PIL import Image
-import random
+import torch
+import torchxrayvision as xrv
+import numpy as np
+import io
+from torchvision import transforms
 
 st.set_page_config(page_title="X-ray Chatbot PoC", layout="centered")
+
+# Initialize the model (do this once at startup)
+@st.cache_resource
+def load_model():
+    model = xrv.models.DenseNet(weights="densenet121-res224-all")
+    model.eval()
+    return model
+
+# Initialize the model
+model = load_model()
+
+# Define image preprocessing
+def preprocess_image(image):
+    # Convert to grayscale
+    if image.mode != 'L':
+        image = image.convert('L')
+    
+    # Resize to 224x224
+    image = image.resize((224, 224))
+    
+    # Convert to numpy array and normalize
+    img_array = np.array(image, dtype=np.float32)
+    img_array = img_array / 255.0
+    
+    # Add channel dimension
+    img_array = img_array[..., np.newaxis]
+    
+    # Convert to tensor
+    img_tensor = torch.from_numpy(img_array).permute(2, 0, 1)
+    img_tensor = img_tensor.unsqueeze(0)
+    
+    return img_tensor
 
 st.title("🩻 X-ray Diagnostic Chatbot (Proof of Concept)")
 st.markdown("Upload a chest X-ray image (from camera or file), and chat with the AI assistant.")
@@ -10,24 +46,24 @@ st.markdown("Upload a chest X-ray image (from camera or file), and chat with the
 image_file = st.file_uploader("Upload your chest X-ray image", type=['jpg', 'jpeg', 'png'])
 
 if image_file:
+    # Load and preprocess the image
     image = Image.open(image_file)
     st.image(image, caption="Uploaded X-ray", use_column_width=True)
-
-    # Generate random findings
-    possible_conditions = [
-        "Pneumonia",
-        "Pleural Effusion",
-        "Cardiomegaly",
-        "Edema",
-        "Consolidation",
-        "Atelectasis",
-        "Pneumothorax"
-    ]
     
-    # Randomly select 2-4 conditions and assign random confidence scores
-    num_conditions = random.randint(2, 4)
-    selected_conditions = random.sample(possible_conditions, num_conditions)
-    findings = {condition: round(random.uniform(0.3, 0.95), 2) for condition in selected_conditions}
+    # Preprocess the image
+    img_tensor = preprocess_image(image)
+
+    # Get predictions
+    with torch.no_grad():
+        outputs = torch.sigmoid(model(img_tensor))
+        outputs = outputs[0].numpy()
+
+    # Get condition names and their predictions
+    conditions = xrv.datasets.default_pathologies
+    findings = {condition: float(score) for condition, score in zip(conditions, outputs)}
+    
+    # Filter out conditions with very low confidence
+    findings = {k: v for k, v in findings.items() if v > 0.1}
 
     st.subheader("🧪 AI Findings:")
     for condition, confidence in findings.items():
@@ -37,11 +73,10 @@ if image_file:
     st.markdown("### 🤖 Chatbot")
     st.write("Would you like me to explain what these findings mean?")
 
-    if st.button("Yes, explain pneumonia"):
-        st.info("Pneumonia is an infection that causes inflammation in the air sacs of the lungs. These air sacs may fill with fluid or pus, leading to cough, fever, and difficulty breathing.")
-
-    if st.button("What is pleural effusion?"):
-        st.info("Pleural effusion is when fluid builds up around the lungs. It can cause chest pain and trouble breathing. It's important to see a doctor to find the cause.")
+    # Dynamic buttons based on findings
+    for condition in findings.keys():
+        if st.button(f"Explain {condition.lower()}"):
+            st.info(f"Information about {condition}: This is a placeholder. In a real implementation, we would provide detailed medical information about this condition.")
 
     if st.button("Show symptoms to watch for"):
         st.warning("Common symptoms include:\n- Cough\n- Fever or chills\n- Chest pain\n- Difficulty breathing\n- Fatigue")

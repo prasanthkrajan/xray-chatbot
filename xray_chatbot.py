@@ -1,5 +1,6 @@
 import streamlit as st
 from PIL import Image
+import random
 
 st.set_page_config(page_title="X-ray Chatbot PoC", layout="centered")
 
@@ -12,11 +13,21 @@ if image_file:
     image = Image.open(image_file)
     st.image(image, caption="Uploaded X-ray", use_column_width=True)
 
-    # Simulated findings
-    findings = {
-        "Pneumonia": 0.82,
-        "Pleural Effusion": 0.76
-    }
+    # Generate random findings
+    possible_conditions = [
+        "Pneumonia",
+        "Pleural Effusion",
+        "Cardiomegaly",
+        "Edema",
+        "Consolidation",
+        "Atelectasis",
+        "Pneumothorax"
+    ]
+    
+    # Randomly select 2-4 conditions and assign random confidence scores
+    num_conditions = random.randint(2, 4)
+    selected_conditions = random.sample(possible_conditions, num_conditions)
+    findings = {condition: round(random.uniform(0.3, 0.95), 2) for condition in selected_conditions}
 
     st.subheader("🧪 AI Findings:")
     for condition, confidence in findings.items():
